@@ -28,7 +28,7 @@ public class Player {
     float stateTime;
 
     enum State {
-        Standing, Walking, Jumping
+        Standing, Walking, Jumping, Crouching
     }
 
 

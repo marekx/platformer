@@ -17,6 +17,7 @@ import com.badlogic.gdx.maps.tiled.TmxMapLoader;
 import com.badlogic.gdx.maps.tiled.renderers.OrthogonalTiledMapRenderer;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
+import com.badlogic.gdx.physics.box2d.Box2D;
 import com.badlogic.gdx.physics.box2d.Box2DDebugRenderer;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.scenes.scene2d.Stage;
@@ -41,12 +42,11 @@ public class MainGameActivity extends ApplicationAdapter {
     private TiledMap tiledMap;
     private Stage stage;
     private AnalogStick analogStick;
-    private ShapeRenderer debugRenderer;
-    private boolean debug = true;
 
     private Animation<TextureRegion> stand;
     private Animation<TextureRegion> walk;
     private Animation<TextureRegion> jump;
+    private Animation<TextureRegion> crouch;
 
     @Override
     public void create() {
@@ -54,12 +54,13 @@ public class MainGameActivity extends ApplicationAdapter {
         texture = new Texture("hero/adventurer-Sheet.png");
         TextureRegion[][] regions = TextureRegion.split(texture, 50, 37);
 
-        stand = new Animation<TextureRegion>(1f/4f, regions[0][0], regions[0][1], regions[0][2], regions[0][3]);
-        walk = new Animation<TextureRegion>(1f/4f, regions[1][1], regions[1][2], regions[1][3], regions[1][4], regions[1][5], regions[1][6]);
-
+        stand = new Animation<TextureRegion>(1f / 4f, regions[0][0], regions[0][1], regions[0][2], regions[0][3]);
+        walk = new Animation<TextureRegion>(1f / 4f, regions[1][1], regions[1][2], regions[1][3], regions[1][4], regions[1][5], regions[1][6]);
+        crouch = new Animation<TextureRegion>(1f / 4f, regions[0][4], regions[0][5], regions[0][6], regions[1][0]);
 
         orthographicCamera = new OrthographicCamera();
         orthographicCamera.setToOrtho(false, Gdx.graphics.getWidth() / SCALE, Gdx.graphics.getHeight() / SCALE);
+
         world = new World(new Vector2(VELOCITY_X, VELOCITY_Y), false);
         batch = new SpriteBatch();
         texture = new Texture(Player.PLAYER_IMG_PATH);
@@ -70,14 +71,11 @@ public class MainGameActivity extends ApplicationAdapter {
         player = new Player(world);
         world.setContactListener(new WorldContactListener());
 
-
         analogStick = new AnalogStick(15, 15);
         stage = new Stage();
         stage.addActor(analogStick);
 
         Gdx.input.setInputProcessor(stage);
-
-        debugRenderer = new ShapeRenderer();
     }
 
     @Override
@@ -89,18 +87,25 @@ public class MainGameActivity extends ApplicationAdapter {
         Gdx.gl.glClearColor(0.5f, 0.8f, 1f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         tiledMapRenderer.render();
+
         stage.act(Gdx.graphics.getDeltaTime());
         stage.draw();
 
-        renderPlayer(deltaTime);
+        renderPlayer();
+
+        box2DDebugRenderer.render(world, orthographicCamera.combined.scale(PIXEL_PER_METER, PIXEL_PER_METER, 0));
+
     }
 
-    private void renderPlayer(float deltaTime) {
+    private void renderPlayer() {
         // based on the player state, get the animation frame
         TextureRegion frame = null;
         switch (player.state) {
             case Standing:
                 frame = stand.getKeyFrame(player.stateTime, true);
+                break;
+            case Crouching:
+                frame = crouch.getKeyFrame(player.stateTime, true);
                 break;
             case Walking:
                 frame = walk.getKeyFrame(player.stateTime, true);
@@ -108,6 +113,7 @@ public class MainGameActivity extends ApplicationAdapter {
             case Jumping:
                 frame = jump.getKeyFrame(player.stateTime, true);
                 break;
+
         }
 
         // draw the player, depending on the current velocity
@@ -126,13 +132,14 @@ public class MainGameActivity extends ApplicationAdapter {
         } else {
             batch.draw(
                     frame,
-                    player.getBody().getPosition().x * PIXEL_PER_METER - (texture.getWidth() / 2),
+                    player.getBody().getPosition().x * PIXEL_PER_METER - (texture.getWidth() / 2) + texture.getWidth(),
                     player.getBody().getPosition().y * PIXEL_PER_METER - (texture.getHeight() / 2),
-                    texture.getWidth(),
+                    -texture.getWidth(),
                     texture.getHeight()
             );
         }
         batch.end();
+
 
     }
 
@@ -193,14 +200,46 @@ public class MainGameActivity extends ApplicationAdapter {
 
         if (percentageX < 0f) {
             player.facesRight = false;
-            player.state = Player.State.Walking;
-            player.velocity.x = Player.RUN_FORCE * percentageX;
 
+            if (percentageY >= 0.75f) {
+                //isJumping = true;
+
+                //same as walking for now
+                player.state = Player.State.Walking;
+                player.velocity.x = Player.RUN_FORCE * percentageX;
+
+            } else if (percentageY < 0.75f && percentageY >= -0.75f) {
+
+                player.state = Player.State.Walking;
+                player.velocity.x = Player.RUN_FORCE * percentageX;
+                isJumping = false;
+
+            } else if (percentageY < -0.75f) {
+
+                player.state = Player.State.Crouching;
+                player.velocity.x = Player.RUN_FORCE * percentageX;
+            }
         } else if (percentageX > 0f) {
             player.facesRight = true;
-            player.state = Player.State.Walking;
-            player.velocity.x = Player.RUN_FORCE * percentageX;
 
+            if (percentageY >= 0.75f) {
+                //isJumping = true;
+
+                //same as walking for now
+                player.state = Player.State.Walking;
+                player.velocity.x = Player.RUN_FORCE * percentageX;
+
+            } else if (percentageY < 0.75f && percentageY >= -0.75f) {
+
+                player.state = Player.State.Walking;
+                player.velocity.x = Player.RUN_FORCE * percentageX;
+                isJumping = false;
+
+            } else if (percentageY < -0.75f) {
+
+                player.state = Player.State.Crouching;
+                player.velocity.x = Player.RUN_FORCE * percentageX;
+            }
         }
 
         if (percentageX == 0f && percentageY == 0f) {
@@ -224,6 +263,4 @@ public class MainGameActivity extends ApplicationAdapter {
 
         player.getBody().setLinearVelocity(player.velocity.x, player.getBody().getLinearVelocity().y);
     }
-
-
 }
